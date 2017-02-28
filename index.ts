@@ -23,3 +23,81 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as sf_contracts from './contracts';
+import * as sf_helpers from './helpers';
+import * as Minimist from 'minimist';
+
+
+let args = Minimist(process.argv.slice(2));
+
+let host: string;
+let mode: string;
+let port: number;
+for (let a in args) {
+    let v = sf_helpers.toStringSafe(args[a]);
+
+    switch (sf_helpers.normalizeString(a)) {
+        case 'h':
+        case 'host':
+            host = sf_helpers.normalizeString(v);
+            break;
+
+        case 'p':
+        case 'port':
+            port = parseInt(v.trim());
+            break;
+
+        case 'receive':
+            mode = 'receive';
+            break;
+
+        case 'send':
+            mode = 'send';
+            break;
+    }
+}
+
+if (sf_helpers.isEmptyString(host)) {
+    host = '127.0.0.1';
+}
+
+if (isNaN(port)) {
+    port = 30904;
+}
+
+if (sf_helpers.isEmptyString(mode)) {
+    mode = 'receive';
+}
+
+let appCtx: sf_contracts.AppContext = {
+    host: host,
+    port: port,
+};
+
+let handler: sf_contracts.ModeHandler = require('./modes/' + mode);
+
+let exitApp = (result?: any) => {
+    let exitCode = parseInt(sf_helpers.toStringSafe(result).trim());
+    if (isNaN(exitCode)) {
+        exitCode = 0;
+    }
+
+    process.exit(exitCode);
+};
+
+let handlerResult = handler.handle(appCtx);
+if (sf_helpers.isNullOrUndefined(handlerResult)) {
+    exitApp(0);
+}
+else {
+    if ('object' === typeof handlerResult) {
+        handlerResult.then((exitCode) => {
+            exitApp(exitCode);
+        }, (err) => {
+            throw err;
+        });
+    }
+    else {
+        exitApp(handlerResult);
+    }
+}
