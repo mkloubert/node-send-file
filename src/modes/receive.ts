@@ -23,10 +23,14 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as FS from 'fs';
+import * as FSExtra from 'fs-extra';
+import * as Path from 'path';
 import * as Progress from 'progress';
 import * as sf_contracts from '../contracts';
 import * as sf_helpers from '../helpers';
 import * as SimpleSocket from 'node-simple-socket';
+const Truncate = require('truncate');
 import * as Workflows from 'node-workflows';
 
 
@@ -115,21 +119,64 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
         let req: sf_contracts.IFileRequest = ctx.value;
 
         return new Promise<any>((resolve, reject) => {
-            bar = new Progress(`  receiving '${req.name}' [:bar] :percent :etas`, {
-                complete: '=',
-                incomplete: ' ',
-                width: 20,
-                total: req.size,
-            });
+            try {
+                let fileName = req.name;
 
-            socket.on('stream.read', readListener);
+                let ext = Path.extname(fileName);
+                let baseName = Path.basename(fileName, ext);
+                
+                let fileNameIndex = -1;
+                let updateFileName = () => {
+                    fileName = `${baseName}_${++fileNameIndex}${ext}`;
+                };
 
-            //TODO: testcode!!!
-            socket.readFile('E:/test/wurst.iso').then(() => {
-                resolve();
-            }).catch((err) => {
-                reject(err);
-            });
+                let fullPath = Path.join(app.dir, fileName);
+                while (FS.existsSync(fullPath)) {
+                    updateFileName();
+
+                    fullPath = Path.join(app.dir, fileName);
+                }
+
+                let outDir = Path.dirname(fullPath);
+
+                bar = new Progress(`  receiving '${Truncate(Path.basename(fullPath), 30)}' [:bar] :percent :etas`, {
+                    complete: '=',
+                    incomplete: ' ',
+                    width: 20,
+                    total: req.size,
+                });
+
+                socket.on('stream.read', readListener);
+
+                let receiveFile = () => {
+                    socket.readFile(fullPath).then(() => {
+                        resolve();
+                    }).catch((err) => {
+                        reject(err);
+                    });
+                };
+
+                FS.exists(outDir, (exists) => {
+                    if (exists) {
+                        receiveFile();
+                    }
+                    else {
+                        // directory needs to be created
+
+                        FSExtra.mkdirs(outDir, (err) => {
+                            if (err) {
+                                reject(err);
+                            }
+                            else {
+                                receiveFile();
+                            }
+                        });
+                    }
+                });
+            }
+            catch (e) {
+                reject(e);
+            }
         });
     });
 

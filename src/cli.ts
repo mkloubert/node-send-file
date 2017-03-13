@@ -34,10 +34,12 @@ const SimpleSocket = require('node-simple-socket');
 
 let args = Minimist(process.argv.slice(2));
 
+let dir: string;
 let bufferSize: number;
 let filePatterns: string[] = [];
 let host: string;
 let mode: string;
+let passwordSize: number;
 let port: number;
 let keySize: number;
 for (let a in args) {
@@ -63,6 +65,11 @@ for (let a in args) {
             host = sf_helpers.normalizeString(v);
             break;
 
+        case 'pwd':
+        case 'password':
+            passwordSize = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
         case 'p':
         case 'port':
             port = parseInt(sf_helpers.toStringSafe(v).trim());
@@ -75,6 +82,11 @@ for (let a in args) {
 
         case 'receive':
             mode = 'receive';
+            break;
+
+        case 'd':
+        case 'dir':
+            dir = sf_helpers.toStringSafe(v);
             break;
 
         case 'send':
@@ -99,6 +111,17 @@ if (isNaN(bufferSize)) {
     bufferSize = 8192;
 }
 
+if (isNaN(passwordSize)) {
+    passwordSize = 64;
+}
+
+if (sf_helpers.isEmptyString(dir)) {
+    dir = process.cwd();
+}
+if (!Path.isAbsolute(dir)) {
+    dir = Path.join(process.cwd(), dir);
+}
+
 if (sf_helpers.isEmptyString(mode)) {
     mode = 'receive';
 }
@@ -118,17 +141,17 @@ filePatterns.forEach(x => {
 files = sf_helpers.distinctArray(files);
 
 let appCtx: sf_contracts.AppContext = {
+    dir: dir,
     files: files,
     host: host,
-    keySize: keySize,
     port: port,
 };
 
 SimpleSocket.DefaultReadBufferSize = bufferSize;
-SimpleSocket.DefaultRSAKeySize = appCtx.keySize;
+SimpleSocket.DefaultRSAKeySize = keySize;
 SimpleSocket.DefaultPasswordGenerator = () => {
     return new Promise<Buffer>((resolve, reject) => {
-        Crypto.randomBytes(64, (err, buff) => {
+        Crypto.randomBytes(passwordSize, (err, buff) => {
             if (err) {
                 reject(err);
             }

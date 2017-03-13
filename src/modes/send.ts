@@ -29,6 +29,7 @@ import * as Progress from 'progress';
 import * as sf_contracts from '../contracts';
 import * as sf_helpers from '../helpers';
 import * as SimpleSocket from 'node-simple-socket';
+const Truncate = require('truncate');
 import * as Workflows from 'node-workflows';
 
 
@@ -117,7 +118,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         };
 
                         let sendCompleted = (err?: any) => {
-                            socket.removeListener('stream.read', writeListener);
+                            socket.removeListener('stream.write', writeListener);
 
                             if (err) {
                                 reject(err);
@@ -127,7 +128,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             }
                         };
 
-                        bar = new Progress(`  sending '${req.name}' [:bar] :percent :etas`, {
+                        bar = new Progress(`  sending '${Truncate(req.name, 30)}' [:bar] :percent :etas`, {
                             complete: '=',
                             incomplete: ' ',
                             width: 20,
@@ -142,6 +143,10 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             sendCompleted(err);
                         });
                     });
+                });
+
+                workflow.then((ctx) => {
+                    ctx.value = ctx.value.socket;
                 });
             });
 

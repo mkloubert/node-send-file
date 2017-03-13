@@ -28,6 +28,10 @@
  */
 export interface AppContext {
     /**
+     * The (working) directory.
+     */
+    readonly dir: string;
+    /**
      * The list of files to process.
      */
     readonly files: string[];
@@ -35,10 +39,6 @@ export interface AppContext {
      * The host.
      */
     readonly host: string;
-    /**
-     * The size for a RSA key.
-     */
-    readonly keySize: number;
     /**
      * The port.
      */
