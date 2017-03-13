@@ -23,15 +23,18 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Crypto from 'crypto';
 import * as Glob from 'glob';
 import * as sf_contracts from './contracts';
 import * as sf_helpers from './helpers';
 import * as Minimist from 'minimist';
 import * as Path from 'path';
+const SimpleSocket = require('node-simple-socket');
 
 
 let args = Minimist(process.argv.slice(2));
 
+let bufferSize: number;
 let filePatterns: string[] = [];
 let host: string;
 let mode: string;
@@ -48,6 +51,11 @@ for (let a in args) {
                 
                 filePatterns = filePatterns.concat(fp);
             }
+            break;
+
+        case 'b':
+        case 'buffer':
+            bufferSize = parseInt(sf_helpers.toStringSafe(v).trim());
             break;
 
         case 'h':
@@ -84,7 +92,11 @@ if (isNaN(port)) {
 }
 
 if (isNaN(keySize)) {
-    keySize = 512;
+    keySize = 2048;
+}
+
+if (isNaN(bufferSize)) {
+    bufferSize = 8192;
 }
 
 if (sf_helpers.isEmptyString(mode)) {
@@ -110,6 +122,21 @@ let appCtx: sf_contracts.AppContext = {
     host: host,
     keySize: keySize,
     port: port,
+};
+
+SimpleSocket.DefaultReadBufferSize = bufferSize;
+SimpleSocket.DefaultRSAKeySize = appCtx.keySize;
+SimpleSocket.DefaultPasswordGenerator = () => {
+    return new Promise<Buffer>((resolve, reject) => {
+        Crypto.randomBytes(64, (err, buff) => {
+            if (err) {
+                reject(err);
+            }
+            else {
+                resolve(buff);
+            }
+        });
+    });
 };
 
 let handler: sf_contracts.ModeHandler = require('./modes/' + mode);

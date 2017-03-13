@@ -23,6 +23,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Progress from 'progress';
 import * as sf_contracts from '../contracts';
 import * as sf_helpers from '../helpers';
 import * as SimpleSocket from 'node-simple-socket';
@@ -39,6 +40,10 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                     completed(err);
                 }
                 else {
+                    socket.once('password.generating', function() {
+                        console.log(`Generating password...`);
+                    });
+
                     socket.on('error', () => {
                         socket.end().catch(() => {
                             //TODO: log
@@ -61,6 +66,27 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
 
 function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.SimpleSocket) {
     let workflow = Workflows.create();
+
+    let bar: Progress;
+
+    let readListener = (fdTarget, chunk, bytesWritten, hashOfChunk) => {
+        if (bar) {
+            bar.tick(bytesWritten);
+        }
+    };
+
+    let completed = (err?: any) => {
+        socket.removeListener('stream.read', readListener);
+
+        if (err) {
+            socket.end().catch(() => {
+                //TODO: log
+            });
+        }
+        else {
+            waitForNextFile(app, socket);
+        }
+    };
 
     // first wait for request
     workflow.then((ctx) => {
@@ -89,9 +115,17 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
         let req: sf_contracts.IFileRequest = ctx.value;
 
         return new Promise<any>((resolve, reject) => {
-            console.log(`Receiving file '${req.name}'...`);
+            bar = new Progress(`  receiving '${req.name}' [:bar] :percent :etas`, {
+                complete: '=',
+                incomplete: ' ',
+                width: 20,
+                total: req.size,
+            });
 
-            socket.readFile('./wurst.iso').then(() => {
+            socket.on('stream.read', readListener);
+
+            //TODO: testcode!!!
+            socket.readFile('E:/test/wurst.iso').then(() => {
                 resolve();
             }).catch((err) => {
                 reject(err);
@@ -100,10 +134,8 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
     });
 
     workflow.start().then(() => {
-        waitForNextFile(app, socket);
+        completed();
     }).catch((err) => {
-        socket.end().catch(() => {
-            //TODO: log
-        });
+        completed(err);
     });
 }
