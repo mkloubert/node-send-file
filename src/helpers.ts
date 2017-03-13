@@ -23,6 +23,17 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as net from 'net';
+
+
+/**
+ * Describes a simple 'completed' action.
+ * 
+ * @param {any} [err] The occurred error.
+ * @param {TResult} [result] The result.
+ */
+export type SimpleCompletedAction<TResult> = (err?: any, result?: TResult) => void;
+
 
 /**
  * Returns a value as array.
@@ -39,6 +50,30 @@ export function asArray<T>(val: T | T[], nonEmpty = true): T[] {
     }
 
     return result;
+}
+
+/**
+ * Creates a simple 'completed' callback for a promise.
+ * 
+ * @param {Function} resolve The 'succeeded' callback.
+ * @param {Function} reject The 'error' callback.
+ * 
+ * @return {SimpleCompletedAction<TResult>} The created action.
+ */
+export function createSimplePromiseCompletedAction<TResult>(resolve: (value?: TResult | PromiseLike<TResult>) => void,
+                                                            reject?: (reason: any) => void): SimpleCompletedAction<TResult> {
+    return (err?, result?) => {
+        if (err) {
+            if (reject) {
+                reject(err);
+            }
+        }
+        else {
+            if (resolve) {
+                resolve(result);
+            }
+        }
+    };
 }
 
 /**

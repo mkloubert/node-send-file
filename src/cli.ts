@@ -23,20 +23,33 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Glob from 'glob';
 import * as sf_contracts from './contracts';
 import * as sf_helpers from './helpers';
 import * as Minimist from 'minimist';
+import * as Path from 'path';
 
 
 let args = Minimist(process.argv.slice(2));
 
+let filePatterns: string[] = [];
 let host: string;
 let mode: string;
 let port: number;
+let keySize: number;
 for (let a in args) {
-    let v = sf_helpers.toStringSafe(args[a]);
+    let v = args[a];
 
     switch (sf_helpers.normalizeString(a)) {
+        case '_':
+            {
+                let fp = sf_helpers.asArray<any>(args[a])
+                                   .map(x => sf_helpers.toStringSafe(x));
+                
+                filePatterns = filePatterns.concat(fp);
+            }
+            break;
+
         case 'h':
         case 'host':
             host = sf_helpers.normalizeString(v);
@@ -44,7 +57,12 @@ for (let a in args) {
 
         case 'p':
         case 'port':
-            port = parseInt(v.trim());
+            port = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
+        case 'k':
+        case 'key':
+            keySize = parseInt(sf_helpers.toStringSafe(v).trim());
             break;
 
         case 'receive':
@@ -65,12 +83,32 @@ if (isNaN(port)) {
     port = 30904;
 }
 
+if (isNaN(keySize)) {
+    keySize = 512;
+}
+
 if (sf_helpers.isEmptyString(mode)) {
     mode = 'receive';
 }
 
+filePatterns = filePatterns.filter(x => !sf_helpers.isEmptyString(x));
+filePatterns = sf_helpers.distinctArray(filePatterns);
+
+// collect files
+let files: string[] = [];
+filePatterns.forEach(x => {
+    let matchingFiles = Glob.sync(x, {
+        cwd: process.cwd(),
+    });
+
+    files = files.concat(matchingFiles);
+});
+files = sf_helpers.distinctArray(files);
+
 let appCtx: sf_contracts.AppContext = {
+    files: files,
     host: host,
+    keySize: keySize,
     port: port,
 };
 

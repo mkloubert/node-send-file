@@ -23,16 +23,60 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-import * as sf_contracts from '../contracts';
+/**
+ * An application context.
+ */
+export interface AppContext {
+    /**
+     * The list of files to process.
+     */
+    readonly files: string[];
+    /**
+     * The host.
+     */
+    readonly host: string;
+    /**
+     * The size for a RSA key.
+     */
+    readonly keySize: number;
+    /**
+     * The port.
+     */
+    readonly port: number;
+}
+
+/**
+ * A mode handler.
+ */
+export interface ModeHandler {
+    /**
+     * Handles the mode.
+     * 
+     * @param {AppContext} ctx The application context.
+     * 
+     * @return {ModeHandlerResult} The result.
+     */
+    handle(ctx: AppContext): ModeHandlerResult;
+}
+
+/**
+ * Result (types) of a mode handler.
+ */
+export type ModeHandlerResult = void | number | PromiseLike<number>;
 
 
-export function handle(ctx: sf_contracts.AppContext): PromiseLike<number> {
-    return new Promise<number>((resolve, reject) => {
-        try {
+export interface IMessage {
+    type: number;
+}
 
-        }
-        catch (e) {
-            reject(e);
-        }
-    });
+export interface IAnswer extends IMessage {
+    code?: number;
+    msg?: string;
+    type: 0;
+}
+
+export interface IFileRequest extends IMessage {
+    name: string;
+    size: number;
+    type: 1;
 }

@@ -5,8 +5,8 @@
             "type": "node",
             "request": "launch",
             "name": "Launch Program",
-            "program": "${workspaceRoot}/index.js",
-            "cwd": "${workspaceRoot}"
+            "program": "${workspaceRoot}/lib/index.js",
+            "cwd": "${workspaceRoot}/lib"
         }
     ]
 }

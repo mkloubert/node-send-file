@@ -23,8 +23,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-import * as sf_contracts from '../contracts';
-
-
-export function handle(ctx: sf_contracts.AppContext) {
+if (require.main === module) {
+    // called from command line
+    require('./cli');
+}
+else {
+    // required as a module
 }
