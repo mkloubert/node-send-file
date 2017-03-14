@@ -29,6 +29,7 @@ import * as Crypto from 'crypto';
 import * as Glob from 'glob';
 const Figlet = require('figlet');
 import * as FS from 'fs';
+import * as OS from 'os';
 import * as sf_contracts from './contracts';
 import * as sf_helpers from './helpers';
 import * as Minimist from 'minimist';
@@ -54,6 +55,7 @@ let passwordSize: number;
 let port: number;
 let showHelp: boolean;
 let unknownArgs: string[] = [];
+let verbose = false;
 for (let a in args) {
     let v = args[a];
 
@@ -152,6 +154,11 @@ for (let a in args) {
             mode = 'send';
             break;
 
+        case 'v':
+        case 'verbose':
+            verbose = true;
+            break;
+
         default:
             unknownArgs.push(a);
             break;
@@ -226,7 +233,23 @@ let appCtx: sf_contracts.AppContext = {
     files: files,
     hash: hash,
     host: host,
+    output: process.stdout,
     port: port,
+    verbose: verbose,
+    write: function(val) {
+        let s: NodeJS.WritableStream = this.output || process.stdout;
+
+        if (Buffer.isBuffer(val)) {
+            val = val.toString('utf8');
+        }
+
+        s.write(sf_helpers.toStringSafe(val));
+        return this;
+    },
+    writeln: function(val) {
+        return this.write(val)
+                   .write(OS.EOL);
+    }
 };
 
 SimpleSocket.Compress = compress;
@@ -365,13 +388,13 @@ Figlet('SendFile.nodejs', (err, data) => {
         header = data;
     }
 
-    console.log(Chalk.yellow(header));
-    console.log();
+    appCtx.writeln(Chalk.yellow(header))
+          .writeln();
 
     if (unknownArgs.length > 0) {
-        console.log(Chalk.bold(Chalk.bgRed(Chalk.white(` Unknown argument${unknownArgs.length > 1 ? 's' : ''}: ${unknownArgs.join(', ')} `))));
-        console.log();
-        console.log();
+        appCtx.writeln(Chalk.bold(Chalk.bgRed(Chalk.white(` Unknown argument${unknownArgs.length > 1 ? 's' : ''}: ${unknownArgs.join(', ')} `))))
+              .writeln()
+              .writeln();
     }
 
     let handlerResult = handler.handle(appCtx);

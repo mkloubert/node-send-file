@@ -34,22 +34,24 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
     return new Promise<number>((resolve, reject) => {
         try {
             // table header
-            new Line()
-                .padding(1)
-                .column('Parameter', 25, [ CLC.cyan ])
-                .column('Example', 32, [ CLC.cyan ])
-                .column('Description', undefined, [ CLC.cyan ])
-                .fill()
-                .output();
+            app.writeln(
+                new Line()
+                    .padding(1)
+                    .column('Parameter', 25, [ CLC.cyan ])
+                    .column('Example', 32, [ CLC.cyan ])
+                    .column('Description', undefined, [ CLC.cyan ])
+                    .fill()
+                    .contents());
 
             let addParamLine = (param: string, example: string, desc: string) => {
-                new Line()
-                    .padding(2)
-                    .column(param, 25, [ CLC.white ])
-                    .column(example, 32, [ CLC.white ])
-                    .column(desc, undefined, [ CLC.white ])
-                    .fill()
-                    .output();
+                app.writeln(
+                    new Line()
+                        .padding(2)
+                        .column(param, 25, [ CLC.white ])
+                        .column(example, 32, [ CLC.white ])
+                        .column(desc, undefined, [ CLC.white ])
+                        .fill()
+                        .contents());
             };
 
             addParamLine('--b, --buffer', '--b=102400', 'Buffer size for reading files. Default: 8192');
@@ -66,8 +68,9 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             addParamLine('--pwd, --password', '--pwd=96', 'The size of the password for the encryption. Default: 64');
             addParamLine('--r, --receive', '--r', 'Force "receive files" mode');
             addParamLine('--s, --send', '--s', 'Force "send files" mode');
+            addParamLine('--v, --verbose', '--v', 'Output additional information');
 
-            console.log();
+            app.writeln();
         }
         catch (e) {
             reject(e);

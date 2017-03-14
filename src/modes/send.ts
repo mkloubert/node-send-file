@@ -58,7 +58,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             let workflow = new Workflows.Workflow();
 
             workflow.then(() => {
-                console.log('Sending files...');
+                app.writeln('Sending files...');
             });
 
             // tell that we have a new connection
@@ -69,14 +69,18 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         });
 
                         socket.once('close', () => {
-                            console.log(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                            app.writeln()
+                               .writeln(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
                         });
 
-                        socket.once('rsakey.generating', function(keySize) {
-                            console.log(`Generating RSA key (${keySize})...`);
-                        });
+                        if (app.verbose) {
+                            socket.once('rsakey.generating', function(keySize) {
+                                app.writeln(`Generating RSA key (${keySize})...`);
+                            });
+                        }
 
-                        console.log(`Connection estabished to '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                        app.writeln()
+                           .writeln(`Connection estabished to '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
 
                         ctx.value = socket;
 
@@ -179,7 +183,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                                 }
                             };
 
-                            let formatStr = Chalk.bold(`  sending '${Truncate(req.name, 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+                            let formatStr = Chalk.bold(`  send '${Truncate(Path.basename(f), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
 
                             bar = new Progress(formatStr, {
                                 complete: '=',

@@ -28,6 +28,10 @@
  */
 export interface AppContext {
     /**
+     * The sub context.
+     */
+    context?: any;
+    /**
      * The (working) directory.
      */
     readonly dir: string;
@@ -48,9 +52,34 @@ export interface AppContext {
      */
     readonly host: string;
     /**
+     * The output stream.
+     */
+    readonly output: NodeJS.WritableStream;
+    /**
      * The port.
      */
     readonly port: number;
+    /**
+     * Is app in "verbose" mode or not.
+     */
+    readonly verbose: boolean;
+    /**
+     * Writes a value to the output stream.
+     * 
+     * @param {any} val The value to write.
+     * 
+     * @chainable
+     */
+    readonly write: (val?: any) => this;
+    /**
+     * Writes a value to the output stream
+     * and appends a "new line" expression.
+     * 
+     * @param {any} val The value to write.
+     * 
+     * @chainable
+     */
+    readonly writeln: (val?: any) => this;
 }
 
 /**

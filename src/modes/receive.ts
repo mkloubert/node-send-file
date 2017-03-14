@@ -39,12 +39,19 @@ const Truncate = require('truncate');
 import * as Workflows from 'node-workflows';
 
 
+interface ReceiveContext {
+    acceptConnections: boolean;
+}
+
 export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
+    app.context = {
+        acceptConnections: true,
+    };
+
     return new Promise<number>((resolve, reject) => {
         let completed = sf_helpers.createSimplePromiseCompletedAction(resolve, reject);
         
         try {
-            let hasAlreadyConnectedWithOne = false;
             let server: Net.Server;
 
             SimpleSocket.listen(app.port, (err, socket?) => {
@@ -53,30 +60,41 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         completed(err);
                     }
                     else {
-                        if (hasAlreadyConnectedWithOne) {
-                            if (!app.doNotClose) {
-                                socket.end().then(() => {
-                                }).catch(() => {
-                                });
+                        if (!app.context.acceptConnections) {
+                            socket.end().then(() => {
+                            }).catch(() => {
+                            });
 
-                                return;
-                            }
+                            return;
                         }
 
-                        hasAlreadyConnectedWithOne = true;
+                        if (!app.doNotClose) {
+                            app.context.acceptConnections = false;
+                        }
 
                         socket.on('error', (err) => {
                         });
 
                         socket.once('close', () => {
-                            console.log(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                            app.writeln()
+                               .writeln(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+
+                            if (!app.doNotClose) {
+                                if (server) {
+                                    server.close(() => {
+                                    });
+                                }
+                            }
                         });
 
-                        socket.once('password.generating', function() {
-                            console.log(`Generating password...`);
-                        });
+                        if (app.verbose) {
+                            socket.once('password.generating', function() {
+                                app.writeln(`Generating password...`);
+                            });
+                        }
 
-                        console.log(`Connection estabished with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                        app.writeln()
+                           .writeln(`Connection estabished with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
 
                         waitForNextFile(app, server, socket);
                     }
@@ -87,7 +105,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             }).then((srv) => {
                 server = srv; 
 
-                console.log('Waiting for files...');
+                app.writeln('Waiting for files...');
             }).catch((err) => {
                 completed(err);
             });
@@ -104,26 +122,20 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
     let bar: Progress;
     let hash: Crypto.Hash;
 
-    let readListener = (fdTarget, chunk, bytesWritten, hashOfChunk) => {
-        if (hash) {
-            hash.update(chunk);
-        }
-        
-        if (bar) {
-            bar.tick(bytesWritten);
-        }
-    };
-
     let completed = (err: any, req?: sf_contracts.IFileRequest) => {
         let isLast: boolean;
         if (req) {
             isLast = req.index === (req.count - 1);
         }
-        
-        if (bar) {
-            bar.complete = true;
-            bar.render();
-        }
+
+        let closeServerOrNot = () => {
+            if (!app.doNotClose) {
+                if (server) {
+                    server.close(() => {
+                    });
+                }
+            }
+        };
 
         if (err) {
             let errMsg = Chalk.bold(Chalk.red(`    [FAILED: '${err}']`));
@@ -132,23 +144,23 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
             socket.end().then(() => {
             }).catch(() => {
             });
+
+            closeServerOrNot();
         }
         else {
             let okMsg = Chalk.bold(Chalk.green(`    [OK: ${hash.digest('hex')}:${req.size}]`));
             process.stderr.write(okMsg + OS.EOL);
 
-            if (app.doNotClose && !isLast) {
-                setTimeout(() => {
+            if (isLast) {
+                if (app.doNotClose) {
                     waitForNextFile(app, server, socket);
-                }, 100);
+                }
+                else {
+                    closeServerOrNot();
+                }
             }
             else {
-                // close server
-
-                if (server) {
-                    server.close(() => {
-                    });
-                }
+                waitForNextFile(app, server, socket);
             }
         }
     };
@@ -237,7 +249,7 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
                     return;
                 }
 
-                let formatStr = Chalk.bold(`  receiving '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+                let formatStr = Chalk.bold(`  receive '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
 
                 bar = new Progress(formatStr, {
                     complete: '=',
@@ -246,8 +258,23 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
                     width: 20,
                 });
 
+                let readListener = (fdTarget, chunk, bytesWritten, hashOfChunk) => {
+                    if (hash) {
+                        hash.update(chunk);
+                    }
+                    
+                    if (bar) {
+                        bar.tick(bytesWritten);
+                    }
+                };
+
                 let receiveCompleted = (err: any) => {
                     socket.removeListener('stream.read', readListener);
+
+                    if (bar) {
+                        bar.complete = true;
+                        bar.render();
+                    }
 
                     if (err) {
                         reject(err);
