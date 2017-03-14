@@ -56,6 +56,10 @@ export interface AppContext {
      */
     readonly output: NodeJS.WritableStream;
     /**
+     * Overwrite existing files or not.
+     */
+    readonly overwrite: boolean;
+    /**
      * The port.
      */
     readonly port: number;

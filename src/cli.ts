@@ -51,6 +51,7 @@ let handshakePassword: Buffer;
 let keySize: number;
 let mode: '' | 'help' | 'receive' | 'send';
 let noNoise = false;
+let overwrite = false;
 let passwordSize: number;
 let port: number;
 let showHelp: boolean;
@@ -132,6 +133,11 @@ for (let a in args) {
         case 'nn':
         case 'no-noise':
             doNotClose = true;
+            break;
+
+        case 'o':
+        case 'overwrite':
+            overwrite = true;
             break;
 
         case 'p':
@@ -233,9 +239,10 @@ let appCtx: sf_contracts.AppContext = {
     files: files,
     hash: hash,
     host: host,
+    overwrite: !!overwrite,
     output: process.stdout,
     port: port,
-    verbose: verbose,
+    verbose: !!verbose,
     write: function(val) {
         let s: NodeJS.WritableStream = this.output || process.stdout;
 

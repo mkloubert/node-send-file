@@ -39,8 +39,9 @@ const Truncate = require('truncate');
 import * as Workflows from 'node-workflows';
 
 
-interface ReceiveContext {
-    acceptConnections: boolean;
+function cleanupPath(path: string): string {
+    return Path.resolve(sf_helpers.toStringSafe(path))
+               .split('/').join(Path.sep);
 }
 
 export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
@@ -228,22 +229,27 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
 
                 let ext = Path.extname(fileName);
                 let baseName = Path.basename(fileName, ext);
-                
+
                 let fileNameIndex = -1;
                 let updateFileName = () => {
                     fileName = `${baseName}_${++fileNameIndex}${ext}`;
                 };
 
                 let fullPath = Path.join(app.dir, fileName);
-                while (FS.existsSync(fullPath)) {
-                    updateFileName();
+                if (!app.overwrite) {
+                    // find unique name
+                    
+                    while (FS.existsSync(fullPath)) {
+                        updateFileName();
 
-                    fullPath = Path.join(app.dir, fileName);
+                        fullPath = Path.join(app.dir, fileName);
+                    }
                 }
+                fullPath = cleanupPath(fullPath);
 
-                let outDir = FS.realpathSync(Path.dirname(fullPath));
+                let outDir = cleanupPath(Path.dirname(fullPath));
                 if (outDir.indexOf(app.dir) < 0) {
-                    // no inside directory!
+                    // not inside directory!
                     
                     reject(new Error('Invalid request!'));
                     return;

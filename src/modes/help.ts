@@ -65,6 +65,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             addParamLine('--k, --key', '--k=2048', 'RSA key size. Default: 1024');
             addParamLine('--nc, --no-compression', '--nc', 'Do NOT use compression.');
             addParamLine('--nn, --no-noise', '--nn', 'Do NOT produce "noise" when exchanging data.');
+            addParamLine('--o, --overwrite', '--o', 'Overwrite existing files.');
             addParamLine('--p, --port', '--p=5979', 'The TCP port. Default: 30904');
             addParamLine('--pwd, --password', '--pwd=96', 'The size of the password for the encryption. Default: 64');
             addParamLine('--r, --receive', '--r', 'Force "receive files" mode');
