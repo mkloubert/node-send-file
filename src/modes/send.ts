@@ -24,6 +24,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 import * as Chalk from 'chalk';
+import * as Crypto from 'crypto';
 import * as FileSize from 'filesize';
 import * as FS from 'fs';
 import * as OS from 'os';
@@ -40,7 +41,6 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
     return new Promise<number>((resolve, reject) => {
         let completed = (err: any, socket?: SimpleSocket.SimpleSocket) => {
             if (socket) {
-                // 
                 socket.end().then(() => {
                 }).catch((err) => {
                 });
@@ -143,50 +143,63 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                     let socket: SimpleSocket.SimpleSocket = ctx.value.socket;
 
                     return new Promise<any>((resolve, reject) => {
-                        let bar: Progress;
+                        try {
+                            let bar: Progress;
+                            let hash = Crypto.createHash(app.hash);
 
-                        let writeListener = (fdSrc, remainingBytes, chunk, hashOfChunk) => {
-                            if (bar) {
-                                bar.tick(chunk.length);
-                            }
-                        };
+                            let writeListener = (fdSrc, remainingBytes, chunk, hashOfChunk) => {
+                                if (hash) {
+                                    hash.update(chunk);
+                                }
 
-                        let sendCompleted = (err: any) => {
-                            socket.removeListener('stream.write', writeListener);
+                                if (bar) {
+                                    bar.tick(chunk.length);
+                                }
+                            };
 
-                            if (bar) {
-                                bar.complete = true;
-                                bar.render();
-                            }
+                            let sendCompleted = (err: any) => {
+                                socket.removeListener('stream.write', writeListener);
 
-                            if (err) {
-                                let errMsg = Chalk.bold(Chalk.red(` [FAILED: '${err}']`));
-                                process.stderr.write(errMsg + OS.EOL);
+                                if (bar) {
+                                    bar.complete = true;
+                                    bar.render();
+                                }
 
-                                reject(err);
-                            }
-                            else {
-                                resolve();
-                            }
-                        };
+                                if (err) {
+                                    let errMsg = Chalk.bold(Chalk.red(`    [FAILED: '${err}']`));
+                                    process.stderr.write(errMsg + OS.EOL);
 
-                        let formatStr = Chalk.bold(`  sending '${Truncate(req.name, 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+                                    reject(err);
+                                }
+                                else {
+                                    let okMsg = Chalk.bold(Chalk.green(`    [OK: ${hash.digest('hex')}:${req.size}]`));
+                                    process.stderr.write(okMsg + OS.EOL);
 
-                        bar = new Progress(formatStr, {
-                            complete: '=',
-                            incomplete: ' ',
-                            width: 20,
-                            total: req.size,
-                        });
+                                    resolve();
+                                }
+                            };
 
-                        socket.on('stream.write', writeListener);
+                            let formatStr = Chalk.bold(`  sending '${Truncate(req.name, 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
 
-                        // send file
-                        socket.writeFile(f).then(() => {
-                            sendCompleted(null);
-                        }).catch((err) => {
-                            sendCompleted(err);
-                        });
+                            bar = new Progress(formatStr, {
+                                complete: '=',
+                                incomplete: ' ',
+                                width: 20,
+                                total: req.size,
+                            });
+
+                            socket.on('stream.write', writeListener);
+
+                            // send file
+                            socket.writeFile(f).then(() => {
+                                sendCompleted(null);
+                            }).catch((err) => {
+                                sendCompleted(err);
+                            });
+                        }
+                        catch (e) {
+                            reject(e);
+                        }
                     });
                 });
 

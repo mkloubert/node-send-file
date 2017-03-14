@@ -24,6 +24,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 import * as Chalk from 'chalk';
+import * as Crypto from 'crypto';
 import * as FileSize from 'filesize';
 import * as FS from 'fs';
 import * as FSExtra from 'fs-extra';
@@ -101,21 +102,31 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
     let workflow = Workflows.create();
 
     let bar: Progress;
+    let hash: Crypto.Hash;
 
     let readListener = (fdTarget, chunk, bytesWritten, hashOfChunk) => {
+        if (hash) {
+            hash.update(chunk);
+        }
+        
         if (bar) {
             bar.tick(bytesWritten);
         }
     };
 
-    let completed = (err: any, isLast?: boolean) => {
+    let completed = (err: any, req?: sf_contracts.IFileRequest) => {
+        let isLast: boolean;
+        if (req) {
+            isLast = req.index === (req.count - 1);
+        }
+        
         if (bar) {
             bar.complete = true;
             bar.render();
         }
 
         if (err) {
-            let errMsg = Chalk.bold(Chalk.red(` [FAILED: '${err}']`));
+            let errMsg = Chalk.bold(Chalk.red(`    [FAILED: '${err}']`));
             process.stderr.write(errMsg + OS.EOL);
 
             socket.end().then(() => {
@@ -123,7 +134,10 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
             });
         }
         else {
-            if (app.doNotClose) {
+            let okMsg = Chalk.bold(Chalk.green(`    [OK: ${hash.digest('hex')}:${req.size}]`));
+            process.stderr.write(okMsg + OS.EOL);
+
+            if (app.doNotClose && !isLast) {
                 setTimeout(() => {
                     waitForNextFile(app, server, socket);
                 }, 100);
@@ -139,7 +153,12 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
         }
     };
 
-    // [0] first wait for request
+    // [0] initialize
+    workflow.then((ctx) => {
+        hash = Crypto.createHash(app.hash);
+    });
+
+    // [1] first wait for request
     workflow.then((ctx) => {
         return new Promise<any>((resolve, reject) => {
             // wait for file request
@@ -187,12 +206,9 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
         });
     });
 
-    // [1] then receive file
+    // [2] then receive file
     workflow.then((ctx) => {
-        let req: sf_contracts.IFileRequest = ctx.value;
-
-        // is last?
-        ctx.result = req.index === (req.count - 1);
+        let req: sf_contracts.IFileRequest = ctx.result = ctx.value;
 
         return new Promise<any>((resolve, reject) => {
             try {
@@ -277,8 +293,8 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
     });
 
     // wait for file
-    workflow.start().then((isLast: boolean) => {
-        completed(null, isLast);
+    workflow.start().then((req: sf_contracts.IFileRequest) => {
+        completed(null, req);
     }).catch((err) => {
         completed(err);
     });

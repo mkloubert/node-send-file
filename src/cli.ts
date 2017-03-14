@@ -36,20 +36,24 @@ import * as Path from 'path';
 const SimpleSocket = require('node-simple-socket');
 
 
-Clear();
-
-
 let args = Minimist(process.argv.slice(2));
 
+let compress: boolean;
+let bufferSize: number;
 let doNotClose = false;
 let dir: string;
-let bufferSize: number;
 let filePatterns: string[] = [];
+let hash: string;
 let host: string;
-let mode: 'receive' | 'send';
+let handshakeCipher = 'aes-256-ctr';
+let handshakePassword: Buffer;
+let keySize: number;
+let mode: '' | 'help' | 'receive' | 'send';
+let noNoise = false;
 let passwordSize: number;
 let port: number;
-let keySize: number;
+let showHelp: boolean;
+let unknownArgs: string[] = [];
 for (let a in args) {
     let v = args[a];
 
@@ -63,9 +67,19 @@ for (let a in args) {
             }
             break;
 
+        case '?':
+        case 'help':
+            showHelp = true;
+            break;
+
         case 'b':
         case 'buffer':
             bufferSize = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
+        case 'c':
+        case 'compress':
+            compress = true;
             break;
 
         case 'd':
@@ -74,7 +88,6 @@ for (let a in args) {
             break;
 
         case 'dnc':
-        case 'donotclose':
         case 'do-not-close':
             doNotClose = true;
             break;
@@ -84,9 +97,39 @@ for (let a in args) {
             host = sf_helpers.normalizeString(v);
             break;
 
+        case 'hash':
+            hash = sf_helpers.normalizeString(v);
+            break;
+
+        case 'hs':
+        case 'handshake':
+            handshakePassword = new Buffer(sf_helpers.toStringSafe(v), 'utf8');
+            break;
+
+        case 'hs64':
+        case 'handshake64':
+            let base64: string = sf_helpers.toStringSafe(v).trim();
+            if (sf_helpers.isEmptyString(base64)) {
+                handshakePassword = null;
+            }
+            else {
+                handshakePassword = new Buffer(base64, 'base64');
+            }
+            break;
+
         case 'k':
         case 'key':
             keySize = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
+        case 'nc':
+        case 'no-compression':
+            compress = false;
+            break;
+
+        case 'nn':
+        case 'no-noise':
+            doNotClose = true;
             break;
 
         case 'p':
@@ -108,11 +151,23 @@ for (let a in args) {
         case 'send':
             mode = 'send';
             break;
+
+        default:
+            unknownArgs.push(a);
+            break;
     }
 }
 
+if (showHelp) {
+    mode = 'help';
+}
+
+if (unknownArgs.length > 0) {
+    mode = 'help';
+}
+
 if (sf_helpers.isEmptyString(host)) {
-    host = '127.0.0.1';
+    host = 'localhost';
 }
 
 if (isNaN(port)) {
@@ -136,6 +191,10 @@ if (sf_helpers.isEmptyString(dir)) {
 }
 if (!Path.isAbsolute(dir)) {
     dir = Path.join(process.cwd(), dir);
+}
+
+if (sf_helpers.isEmptyString(hash)) {
+    hash = 'md5';
 }
 
 if (sf_helpers.isEmptyString(mode)) {
@@ -165,10 +224,12 @@ let appCtx: sf_contracts.AppContext = {
     doNotClose: !!doNotClose,
     dir: FS.realpathSync(dir),
     files: files,
+    hash: hash,
     host: host,
     port: port,
 };
 
+SimpleSocket.Compress = compress;
 SimpleSocket.DefaultReadBufferSize = bufferSize;
 SimpleSocket.DefaultRSAKeySize = keySize;
 SimpleSocket.DefaultPasswordGenerator = () => {
@@ -184,6 +245,101 @@ SimpleSocket.DefaultPasswordGenerator = () => {
     });
 };
 
+if (!noNoise) {
+    // produces "noise" for
+    // each exchanged data
+
+    SimpleSocket.DefaultDataTransformer = (ctx) => {
+        return new Promise<Buffer>((resolve, reject) => {
+            try {
+                let data: Buffer = ctx.data;
+
+                if (1 === ctx.direction) {
+                    // add "noise"
+
+                    Crypto.randomBytes(1, (err, noiseByte) => {
+                        if (err) {
+                            reject(err);
+                        }
+                        else {
+                            try {
+                                let noiseLength = Math.floor(Math.random() * 256);
+                                noiseLength = Math.min(noiseLength, 255);
+                                noiseLength = Math.max(noiseLength, 0);
+
+                                let newBuffer = Buffer.alloc(2 + noiseLength + data.length);
+
+                                noiseByte.copy(newBuffer, 0);
+                                newBuffer.writeUInt8(noiseLength, 1);
+
+                                let appendData = () => {
+                                    data.copy(newBuffer, 2 + noiseLength);
+
+                                    resolve(newBuffer);
+                                };
+
+                                if (noiseLength > 0) {
+                                    Crypto.randomBytes(noiseLength, (err, noise) => {
+                                        try {
+                                            if (err) {
+                                                reject(err);
+                                            }
+                                            else {
+                                                noise.copy(newBuffer, 2);
+
+                                                appendData();
+                                            }
+                                        }
+                                        catch (e) {
+                                            reject(e);
+                                        }
+                                    });
+                                }
+                                else {
+                                    appendData();
+                                }
+                            }
+                            catch (e) {
+                                reject(e);
+                            }
+                        }
+                    });
+                }
+                else if (2 === ctx.direction) {
+                    // extract "real data" from "noise"
+
+                    let noiseLength = data.readUInt8(1);
+
+                    let realData = Buffer.alloc(data.length - 2 - noiseLength);
+                    data.copy(realData, 0, 2 + noiseLength);
+
+                    resolve(realData);
+                }
+            }
+            catch (e) {
+                reject(e);
+            }
+        });
+    };
+}
+
+if (handshakePassword && handshakePassword.length > 0) {
+    SimpleSocket.DefaultHandshakeTransformer = function(ctx) {        
+        let cipher: Crypto.Cipher | Crypto.Decipher;
+        if (1 === ctx.direction) {
+            // encrypt
+            cipher = Crypto.createCipher(handshakeCipher, handshakePassword);
+        }
+        else if (2 === ctx.direction) {
+            // decrypt
+            cipher = Crypto.createDecipher(handshakeCipher, handshakePassword);
+        }
+
+        return Buffer.concat([ cipher.update(ctx.data),
+                               cipher.final() ]);
+    };
+}
+
 let handler: sf_contracts.ModeHandler = require('./modes/' + mode);
 
 let exitApp = (result?: any) => {
@@ -195,7 +351,9 @@ let exitApp = (result?: any) => {
     process.exit(exitCode);
 };
 
-Figlet('SendFile', (err, data) => {
+Figlet('SendFile.nodejs', (err, data) => {
+    Clear();
+
     let header: string;
     if (err) {
         header = "send-file";
@@ -204,8 +362,14 @@ Figlet('SendFile', (err, data) => {
         header = data;
     }
 
-    console.log(Chalk.bold(Chalk.yellow(header)));
+    console.log(Chalk.yellow(header));
     console.log();
+
+    if (unknownArgs.length > 0) {
+        console.log(Chalk.bold(Chalk.bgRed(Chalk.white(` Unknown argument${unknownArgs.length > 1 ? 's' : ''}: ${unknownArgs.join(', ')} `))));
+        console.log();
+        console.log();
+    }
 
     let handlerResult = handler.handle(appCtx);
     if (sf_helpers.isNullOrUndefined(handlerResult)) {

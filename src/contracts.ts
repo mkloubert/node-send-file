@@ -40,6 +40,10 @@ export interface AppContext {
      */
     readonly files: string[];
     /**
+     * The hash algorithm to use.
+     */
+    readonly hash: string;
+    /**
      * The host.
      */
     readonly host: string;
