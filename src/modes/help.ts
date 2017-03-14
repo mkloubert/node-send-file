@@ -58,6 +58,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             addParamLine('--c, --compress', '--c', 'Force compression.');
             addParamLine('--d, --dir', '--d=./files', 'The custom directory for / with the files. Default: ./');
             addParamLine('--dnc, --do-not-close', '--dnc', 'Do not close host after first connect.');
+            addParamLine('--hash', '--hash=md5', 'The hash algorithm to use. Default: sha256');
             addParamLine('--h, --host', '--h=bob.example.com', 'The name of the host to connect to. Default: localhost');
             addParamLine('--hs, --handshake', '--hs=P@assword123!', 'A custom password for the handshake.');
             addParamLine('--hs64, --handshake64', '--hs64=UEBhc3N3b3JkMTIzIQ==', 'A custom password for the handshake in Base64 format.');

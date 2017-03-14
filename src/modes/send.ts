@@ -184,6 +184,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             };
 
                             let formatStr = Chalk.bold(`  send '${Truncate(Path.basename(f), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+                            formatStr += Chalk.reset('');
 
                             bar = new Progress(formatStr, {
                                 complete: '=',

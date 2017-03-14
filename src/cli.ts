@@ -201,7 +201,7 @@ if (!Path.isAbsolute(dir)) {
 }
 
 if (sf_helpers.isEmptyString(hash)) {
-    hash = 'md5';
+    hash = 'sha256';
 }
 
 if (sf_helpers.isEmptyString(mode)) {

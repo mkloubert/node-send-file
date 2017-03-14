@@ -250,6 +250,7 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
                 }
 
                 let formatStr = Chalk.bold(`  receive '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+                formatStr += Chalk.reset('');
 
                 bar = new Progress(formatStr, {
                     complete: '=',
