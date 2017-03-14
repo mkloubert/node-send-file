@@ -32,6 +32,10 @@ export interface AppContext {
      */
     readonly dir: string;
     /**
+     * Do not close server after first connection?
+     */
+    readonly doNotClose: boolean;
+    /**
      * The list of files to process.
      */
     readonly files: string[];
@@ -56,7 +60,7 @@ export interface ModeHandler {
      * 
      * @return {ModeHandlerResult} The result.
      */
-    handle(ctx: AppContext): ModeHandlerResult;
+    readonly handle: (ctx: AppContext) => ModeHandlerResult;
 }
 
 /**
@@ -64,19 +68,56 @@ export interface ModeHandler {
  */
 export type ModeHandlerResult = void | number | PromiseLike<number>;
 
-
+/**
+ * A message.
+ */
 export interface IMessage {
+    /**
+     * The type (ID).
+     */
     type: number;
 }
 
+/**
+ * An answer.
+ */
 export interface IAnswer extends IMessage {
+    /**
+     * The code.
+     */
     code?: number;
+    /**
+     * The message.
+     */
     msg?: string;
+    /**
+     * @inheritDoc
+     */
     type: 0;
 }
 
+/**
+ * A file reqest.
+ */
 export interface IFileRequest extends IMessage {
+    /**
+     * The total number of files.
+     */
+    count: number;
+    /**
+     * The zero based index of the current file.
+     */
+    index: number;
+    /**
+     * The name of the file.
+     */
     name: string;
+    /**
+     * The size in bytes.
+     */
     size: number;
+    /**
+     * @inheritDoc
+     */
     type: 1;
 }

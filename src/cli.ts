@@ -23,8 +23,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Chalk from 'chalk';
+const Clear = require('clear');
 import * as Crypto from 'crypto';
 import * as Glob from 'glob';
+const Figlet = require('figlet');
+import * as FS from 'fs';
 import * as sf_contracts from './contracts';
 import * as sf_helpers from './helpers';
 import * as Minimist from 'minimist';
@@ -32,13 +36,17 @@ import * as Path from 'path';
 const SimpleSocket = require('node-simple-socket');
 
 
+Clear();
+
+
 let args = Minimist(process.argv.slice(2));
 
+let doNotClose = false;
 let dir: string;
 let bufferSize: number;
 let filePatterns: string[] = [];
 let host: string;
-let mode: string;
+let mode: 'receive' | 'send';
 let passwordSize: number;
 let port: number;
 let keySize: number;
@@ -60,19 +68,20 @@ for (let a in args) {
             bufferSize = parseInt(sf_helpers.toStringSafe(v).trim());
             break;
 
+        case 'd':
+        case 'dir':
+            dir = sf_helpers.toStringSafe(v);
+            break;
+
+        case 'dnc':
+        case 'donotclose':
+        case 'do-not-close':
+            doNotClose = true;
+            break;
+            
         case 'h':
         case 'host':
             host = sf_helpers.normalizeString(v);
-            break;
-
-        case 'pwd':
-        case 'password':
-            passwordSize = parseInt(sf_helpers.toStringSafe(v).trim());
-            break;
-
-        case 'p':
-        case 'port':
-            port = parseInt(sf_helpers.toStringSafe(v).trim());
             break;
 
         case 'k':
@@ -80,15 +89,22 @@ for (let a in args) {
             keySize = parseInt(sf_helpers.toStringSafe(v).trim());
             break;
 
+        case 'p':
+        case 'port':
+            port = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
+        case 'pwd':
+        case 'password':
+            passwordSize = parseInt(sf_helpers.toStringSafe(v).trim());
+            break;
+
+        case 'r':
         case 'receive':
             mode = 'receive';
             break;
 
-        case 'd':
-        case 'dir':
-            dir = sf_helpers.toStringSafe(v);
-            break;
-
+        case 's':
         case 'send':
             mode = 'send';
             break;
@@ -104,7 +120,7 @@ if (isNaN(port)) {
 }
 
 if (isNaN(keySize)) {
-    keySize = 2048;
+    keySize = 1024;
 }
 
 if (isNaN(bufferSize)) {
@@ -123,7 +139,12 @@ if (!Path.isAbsolute(dir)) {
 }
 
 if (sf_helpers.isEmptyString(mode)) {
-    mode = 'receive';
+    if (filePatterns.length > 0) {
+        mode = 'send';
+    }
+    else {
+        mode = 'receive';
+    }
 }
 
 filePatterns = filePatterns.filter(x => !sf_helpers.isEmptyString(x));
@@ -141,7 +162,8 @@ filePatterns.forEach(x => {
 files = sf_helpers.distinctArray(files);
 
 let appCtx: sf_contracts.AppContext = {
-    dir: dir,
+    doNotClose: !!doNotClose,
+    dir: FS.realpathSync(dir),
     files: files,
     host: host,
     port: port,
@@ -173,19 +195,32 @@ let exitApp = (result?: any) => {
     process.exit(exitCode);
 };
 
-let handlerResult = handler.handle(appCtx);
-if (sf_helpers.isNullOrUndefined(handlerResult)) {
-    exitApp(0);
-}
-else {
-    if ('object' === typeof handlerResult) {
-        handlerResult.then((exitCode) => {
-            exitApp(exitCode);
-        }, (err) => {
-            throw err;
-        });
+Figlet('SendFile', (err, data) => {
+    let header: string;
+    if (err) {
+        header = "send-file";
     }
     else {
-        exitApp(handlerResult);
+        header = data;
     }
-}
+
+    console.log(Chalk.bold(Chalk.yellow(header)));
+    console.log();
+
+    let handlerResult = handler.handle(appCtx);
+    if (sf_helpers.isNullOrUndefined(handlerResult)) {
+        exitApp(0);
+    }
+    else {
+        if ('object' === typeof handlerResult) {
+            handlerResult.then((exitCode) => {
+                exitApp(exitCode);
+            }, (err) => {
+                throw err;
+            });
+        }
+        else {
+            exitApp(handlerResult);
+        }
+    }
+});

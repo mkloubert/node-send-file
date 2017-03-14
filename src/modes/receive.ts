@@ -23,8 +23,12 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Chalk from 'chalk';
+import * as FileSize from 'filesize';
 import * as FS from 'fs';
 import * as FSExtra from 'fs-extra';
+import * as Net from 'net';
+import * as OS from 'os';
 import * as Path from 'path';
 import * as Progress from 'progress';
 import * as sf_contracts from '../contracts';
@@ -39,24 +43,49 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
         let completed = sf_helpers.createSimplePromiseCompletedAction(resolve, reject);
         
         try {
+            let hasAlreadyConnectedWithOne = false;
+            let server: Net.Server;
+
             SimpleSocket.listen(app.port, (err, socket?) => {
-                if (err) {
-                    completed(err);
-                }
-                else {
-                    socket.once('password.generating', function() {
-                        console.log(`Generating password...`);
-                    });
+                try {
+                    if (err) {
+                        completed(err);
+                    }
+                    else {
+                        if (hasAlreadyConnectedWithOne) {
+                            if (!app.doNotClose) {
+                                socket.end().then(() => {
+                                }).catch(() => {
+                                });
 
-                    socket.on('error', () => {
-                        socket.end().catch(() => {
-                            //TODO: log
+                                return;
+                            }
+                        }
+
+                        hasAlreadyConnectedWithOne = true;
+
+                        socket.on('error', (err) => {
                         });
-                    });
 
-                    waitForNextFile(app, socket);
+                        socket.once('close', () => {
+                            console.log(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                        });
+
+                        socket.once('password.generating', function() {
+                            console.log(`Generating password...`);
+                        });
+
+                        console.log(`Connection estabished with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+
+                        waitForNextFile(app, server, socket);
+                    }
                 }
-            }).then(() => {
+                catch (e) {
+
+                }
+            }).then((srv) => {
+                server = srv; 
+
                 console.log('Waiting for files...');
             }).catch((err) => {
                 completed(err);
@@ -68,7 +97,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
     });
 }
 
-function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.SimpleSocket) {
+function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socket: SimpleSocket.SimpleSocket) {
     let workflow = Workflows.create();
 
     let bar: Progress;
@@ -79,44 +108,91 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
         }
     };
 
-    let completed = (err?: any) => {
-        socket.removeListener('stream.read', readListener);
+    let completed = (err: any, isLast?: boolean) => {
+        if (bar) {
+            bar.complete = true;
+            bar.render();
+        }
 
         if (err) {
-            socket.end().catch(() => {
-                //TODO: log
+            let errMsg = Chalk.bold(Chalk.red(` [FAILED: '${err}']`));
+            process.stderr.write(errMsg + OS.EOL);
+
+            socket.end().then(() => {
+            }).catch(() => {
             });
         }
         else {
-            waitForNextFile(app, socket);
+            if (app.doNotClose) {
+                setTimeout(() => {
+                    waitForNextFile(app, server, socket);
+                }, 100);
+            }
+            else {
+                // close server
+
+                if (server) {
+                    server.close(() => {
+                    });
+                }
+            }
         }
     };
 
-    // first wait for request
+    // [0] first wait for request
     workflow.then((ctx) => {
         return new Promise<any>((resolve, reject) => {
             // wait for file request
             socket.readJSON<sf_contracts.IFileRequest>().then((req) => {
-                // send OK
-                socket.writeJSON<sf_contracts.IAnswer>({
-                    code: 0,
-                    type: 0,
-                }).then(() => {
-                    ctx.value = req;
+                try {
+                    if (1 !== req.type) {
+                        reject(new Error(`Unexpected message type '${req.type}'!`));
+                        return;
+                    }
 
-                    resolve();
-                }).catch((err) => {
-                    reject(err);
-                });
+                    if (isNaN(req.count)) {
+                        reject(new Error(`Corrupt message (1)!`));
+                        return;
+                    }
+
+
+                    if (isNaN(req.index)) {
+                        reject(new Error(`Corrupt message (2)!`));
+                        return;
+                    }
+
+                    if (req.index < 0 || req.index >= req.count) {
+                        reject(new Error(`Corrupt message (3)!`));
+                        return;
+                    }
+
+                    // send OK
+                    socket.writeJSON<sf_contracts.IAnswer>({
+                        code: 0,
+                        type: 0,
+                    }).then(() => {
+                        ctx.value = req;
+
+                        resolve();
+                    }).catch((err) => {
+                        reject(err);  // could not send answer
+                    });
+                }
+                catch (e) {
+                    reject(e);
+                }
             }).catch((err) => {
-                reject(err);
+                reject(err);  // could not read request
             });
         });
     });
 
-    // then receive file
+    // [1] then receive file
     workflow.then((ctx) => {
         let req: sf_contracts.IFileRequest = ctx.value;
+
+        // is last?
+        ctx.result = req.index === (req.count - 1);
 
         return new Promise<any>((resolve, reject) => {
             try {
@@ -137,31 +213,51 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
                     fullPath = Path.join(app.dir, fileName);
                 }
 
-                let outDir = Path.dirname(fullPath);
+                let outDir = FS.realpathSync(Path.dirname(fullPath));
+                if (outDir.indexOf(app.dir) < 0) {
+                    // no inside directory!
+                    
+                    reject(new Error('Invalid request!'));
+                    return;
+                }
 
-                bar = new Progress(`  receiving '${Truncate(Path.basename(fullPath), 30)}' [:bar] :percent :etas`, {
+                let formatStr = Chalk.bold(`  receiving '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+
+                bar = new Progress(formatStr, {
                     complete: '=',
                     incomplete: ' ',
-                    width: 20,
                     total: req.size,
+                    width: 20,
                 });
 
-                socket.on('stream.read', readListener);
+                let receiveCompleted = (err: any) => {
+                    socket.removeListener('stream.read', readListener);
+
+                    if (err) {
+                        reject(err);
+                    }
+                    else {
+                        resolve();
+                    }
+                };
 
                 let receiveFile = () => {
+                    socket.on('stream.read', readListener);
+
                     socket.readFile(fullPath).then(() => {
-                        resolve();
+                        receiveCompleted(null);  // finished
                     }).catch((err) => {
-                        reject(err);
+                        receiveCompleted(err);  // could not read file
                     });
                 };
 
+                // check if start directory exists...
                 FS.exists(outDir, (exists) => {
                     if (exists) {
-                        receiveFile();
+                        receiveFile();  // ... yes, start receiving file
                     }
                     else {
-                        // directory needs to be created
+                        // ... no => directory needs to be created
 
                         FSExtra.mkdirs(outDir, (err) => {
                             if (err) {
@@ -180,8 +276,9 @@ function waitForNextFile(app: sf_contracts.AppContext, socket: SimpleSocket.Simp
         });
     });
 
-    workflow.start().then(() => {
-        completed();
+    // wait for file
+    workflow.start().then((isLast: boolean) => {
+        completed(null, isLast);
     }).catch((err) => {
         completed(err);
     });

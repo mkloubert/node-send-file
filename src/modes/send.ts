@@ -23,7 +23,10 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Chalk from 'chalk';
+import * as FileSize from 'filesize';
 import * as FS from 'fs';
+import * as OS from 'os';
 import * as Path from 'path';
 import * as Progress from 'progress';
 import * as sf_contracts from '../contracts';
@@ -35,20 +38,40 @@ import * as Workflows from 'node-workflows';
 
 export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
     return new Promise<number>((resolve, reject) => {
-        let completed = sf_helpers.createSimplePromiseCompletedAction(resolve, reject);
+        let completed = (err: any, socket?: SimpleSocket.SimpleSocket) => {
+            if (socket) {
+                // 
+                socket.end().then(() => {
+                }).catch((err) => {
+                });
+            }
+
+            if (err) {
+                reject(err);
+            }
+            else {
+                resolve();
+            }
+        };
         
         try {
-            //TODO
-
             let workflow = new Workflows.Workflow();
 
             workflow.then(() => {
                 console.log('Sending files...');
             });
 
+            // tell that we have a new connection
             workflow.then((ctx) => {
                 return new Promise<any>((resolve, reject) => {
                     SimpleSocket.connect(app.port, app.host).then((socket) => {
+                        socket.on('error', (err) => {
+                        });
+
+                        socket.once('close', () => {
+                            console.log(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                        });
+
                         socket.once('rsakey.generating', function(keySize) {
                             console.log(`Generating RSA key (${keySize})...`);
                         });
@@ -64,7 +87,9 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                 });
             });
 
-            app.files.forEach(f => {
+            // actions for each file
+            app.files.forEach((f, i) => {
+                // start a request
                 workflow.then((ctx) => {
                     let socket: SimpleSocket.SimpleSocket = ctx.value;
 
@@ -75,35 +100,44 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             }
                             else {
                                 let req: sf_contracts.IFileRequest = {
+                                    count: app.files.length,
+                                    index: i,
                                     name: Path.basename(f),
                                     size: stats.size,
                                     type: 1,
                                 };
 
+                                // send request
                                 socket.writeJSON(req).then(() => {
                                     socket.readJSON<sf_contracts.IAnswer>().then((answer) => {
-                                        if (answer.code === 0 && answer.type === 0) {
-                                            ctx.value = {
-                                                request: req,
-                                                socket: ctx.value,
-                                            };
+                                        try {
+                                            if (answer.code === 0 && answer.type === 0) {
+                                                ctx.value = {
+                                                    request: req,
+                                                    socket: ctx.value,
+                                                };
 
-                                            resolve();
+                                                resolve();
+                                            }
+                                            else {
+                                                reject(new Error(`Unexpected answer!`));
+                                            }
                                         }
-                                        else {
-                                            reject(new Error(`Unexpected answer!`));
+                                        catch (e) {
+                                            reject(e);
                                         }
                                     }, (err) => {
-                                        reject();
+                                        reject(err);  // could not read answer
                                     });
                                 }).catch((err) => {
-                                    reject(err);
+                                    reject(err);  // could not send request
                                 });
                             }
                         });
                     });
                 });
 
+                // send file
                 workflow.then((ctx) => {
                     let req: sf_contracts.IFileRequest = ctx.value.request;
                     let socket: SimpleSocket.SimpleSocket = ctx.value.socket;
@@ -117,10 +151,18 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             }
                         };
 
-                        let sendCompleted = (err?: any) => {
+                        let sendCompleted = (err: any) => {
                             socket.removeListener('stream.write', writeListener);
 
+                            if (bar) {
+                                bar.complete = true;
+                                bar.render();
+                            }
+
                             if (err) {
+                                let errMsg = Chalk.bold(Chalk.red(` [FAILED: '${err}']`));
+                                process.stderr.write(errMsg + OS.EOL);
+
                                 reject(err);
                             }
                             else {
@@ -128,7 +170,9 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             }
                         };
 
-                        bar = new Progress(`  sending '${Truncate(req.name, 30)}' [:bar] :percent :etas`, {
+                        let formatStr = Chalk.bold(`  sending '${Truncate(req.name, 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
+
+                        bar = new Progress(formatStr, {
                             complete: '=',
                             incomplete: ' ',
                             width: 20,
@@ -137,21 +181,24 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
 
                         socket.on('stream.write', writeListener);
 
+                        // send file
                         socket.writeFile(f).then(() => {
-                            sendCompleted();
+                            sendCompleted(null);
                         }).catch((err) => {
                             sendCompleted(err);
                         });
                     });
                 });
 
+                // cleanups
                 workflow.then((ctx) => {
                     ctx.value = ctx.value.socket;
                 });
             });
 
+            // start sending files
             workflow.start().then(() => {
-                completed();
+                completed(null);
             }).catch((err) => {
                 completed(err);
             });

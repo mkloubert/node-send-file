@@ -23,10 +23,16 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as sf_contracts from './contracts';
+
+
 if (require.main === module) {
     // called from command line
     require('./cli');
 }
 else {
     // required as a module
+
+    exports.receive = <sf_contracts.ModeHandler>require('./modes/receive');
+    exports.send = <sf_contracts.ModeHandler>require('./modes/send');
 }
