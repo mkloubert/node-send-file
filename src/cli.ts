@@ -232,6 +232,7 @@ let appCtx: sf_contracts.AppContext = {
 SimpleSocket.Compress = compress;
 SimpleSocket.DefaultReadBufferSize = bufferSize;
 SimpleSocket.DefaultRSAKeySize = keySize;
+
 SimpleSocket.DefaultPasswordGenerator = () => {
     return new Promise<Buffer>((resolve, reject) => {
         Crypto.randomBytes(passwordSize, (err, buff) => {
@@ -324,6 +325,8 @@ if (!noNoise) {
 }
 
 if (handshakePassword && handshakePassword.length > 0) {
+    // encrypt handshake with a password
+
     SimpleSocket.DefaultHandshakeTransformer = function(ctx) {        
         let cipher: Crypto.Cipher | Crypto.Decipher;
         if (1 === ctx.direction) {
