@@ -24,17 +24,18 @@
 // DEALINGS IN THE SOFTWARE.
 
 import * as Chalk from 'chalk';
-const Clear = require('clear');
 import * as Crypto from 'crypto';
 import * as Glob from 'glob';
 const Figlet = require('figlet');
 import * as FS from 'fs';
+import * as FSExtra from 'fs-extra';
 import * as OS from 'os';
 import * as sf_contracts from './contracts';
 import * as sf_helpers from './helpers';
 import * as Minimist from 'minimist';
 import * as Path from 'path';
 const SimpleSocket = require('node-simple-socket');
+const TerminalKit = require('terminal-kit');
 
 
 // unhandled exception
@@ -69,6 +70,9 @@ process.once('exit', function(exitCode: number) {
            .write(Chalk.reset
                        .grey(' '));
 });
+
+TerminalKit.terminal.eraseDisplayBelow();
+TerminalKit.terminal.clear();
 
 
 let args = Minimist(process.argv.slice(2));
@@ -418,8 +422,9 @@ let exitApp = (result?: any) => {
     process.exit(exitCode);
 };
 
+
 Figlet('SendFile.node', (err, data) => {
-    Clear();
+    appCtx.writeln(Chalk.reset(' '));
 
     let header: string;
     if (err) {
@@ -438,20 +443,65 @@ Figlet('SendFile.node', (err, data) => {
               .writeln();
     }
 
-    let handlerResult = handler.handle(appCtx);
-    if (sf_helpers.isNullOrUndefined(handlerResult)) {
-        exitApp(0);
-    }
-    else {
-        if ('object' === typeof handlerResult) {
-            handlerResult.then((exitCode) => {
-                exitApp(exitCode);
-            }, (err) => {
-                throw err;
+    let homeDir = OS.userInfo().homedir;
+
+    let appDir = Path.join(homeDir, '.mkloubert.node-send-file');
+
+    FS.exists(appDir, (exists) => {
+        let startApp = () => {
+            let handlerResult = handler.handle(appCtx);
+            if (sf_helpers.isNullOrUndefined(handlerResult)) {
+                exitApp(0);
+            }
+            else {
+                if ('object' === typeof handlerResult) {
+                    handlerResult.then((exitCode) => {
+                        exitApp(exitCode);
+                    }, (err) => {
+                        throw err;
+                    });
+                }
+                else {
+                    exitApp(handlerResult);
+                }
+            }
+        };
+
+        let checkIfDirectory = () => {
+            FS.stat(appDir, (err, stats) => {
+                if (err) {
+                    appCtx.writeln(Chalk.reset
+                                        .bgYellow(Chalk.black(` Could not check if '${appDir}' is a directory: ${sf_helpers.toStringSafe(err)} `)))
+                          .writeln()
+                          .writeln();
+                }
+                else {
+                    if (!stats.isDirectory()) {
+                        appCtx.writeln(Chalk.reset
+                                            .bgYellow(Chalk.black(` '${appDir}' is no directory! `)))
+                              .writeln()
+                              .writeln();
+                    }
+                }
+                
+                startApp();
             });
+        };
+
+        if (exists) {
+            checkIfDirectory();
         }
         else {
-            exitApp(handlerResult);
+            FSExtra.mkdirs(appDir, (err) => {
+                if (err) {
+                    appCtx.writeln(Chalk.reset
+                                        .bgYellow(Chalk.black(` Could not create app directoy '${appDir}': ${sf_helpers.toStringSafe(err)} `)))
+                          .writeln()
+                          .writeln();
+                }
+
+                startApp();
+            });
         }
-    }
+    });
 });

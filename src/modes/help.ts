@@ -23,6 +23,7 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
+import * as Chalk from 'chalk';
 const CLI = require('clui');
 const CLC = require('cli-color');
 import * as sf_contracts from '../contracts';
@@ -33,6 +34,48 @@ const LineBuffer = CLI.LineBuffer;
 export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
     return new Promise<number>((resolve, reject) => {
         try {
+            app.writeln(
+                new Line()
+                    .padding(1)
+                    .column(Chalk.reset
+                                 .underline
+                                 .bold
+                                 .white('SEND files example:'))
+                    .fill()
+                    .contents());
+            app.writeln(
+                new Line()
+                    .padding(3)
+                    .column(Chalk.reset
+                                 .bold
+                                 .bgMagenta
+                                 .yellow(' send-file /path/to/my/files/* --host=bob.example.com '))
+                    .fill()
+                    .contents());
+
+            console.log();
+
+            app.writeln(
+                new Line()
+                    .padding(1)
+                    .column(Chalk.reset
+                                 .underline
+                                 .bold
+                                 .white('RECEIVE files example:'))
+                    .fill()
+                    .contents());
+            app.writeln(
+                new Line()
+                    .padding(3)
+                    .column(Chalk.reset
+                                 .bold
+                                 .bgMagenta
+                                 .yellow(' send-file --dir=/path/to/destination '))
+                    .fill()
+                    .contents());
+
+            console.log();
+
             // table header
             app.writeln(
                 new Line()
