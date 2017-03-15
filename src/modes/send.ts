@@ -58,7 +58,8 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
             let workflow = new Workflows.Workflow();
 
             workflow.then(() => {
-                app.writeln('Sending files...');
+                app.writeln(Chalk.reset
+                                 .gray(`Sending files...`));
             });
 
             // tell that we have a new connection
@@ -69,8 +70,21 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         });
 
                         socket.once('close', () => {
-                            app.writeln()
-                               .writeln(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                            if (app.verbose) {
+                                app.writeln()
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .bold
+                                               .white(`Closed connection`))
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .gray(` with `))
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .bold
+                                               .white(socket.socket.remoteAddress))
+                                   .writeln();
+                            }
                         });
 
                         if (app.verbose) {
@@ -80,7 +94,18 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         }
 
                         app.writeln()
-                           .writeln(`Connection estabished to '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .bold
+                                       .white(`Connection estabished`))
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .gray(` to `))
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .bold
+                                       .white(socket.socket.remoteAddress))
+                           .writeln();
 
                         ctx.value = socket;
 
@@ -156,7 +181,7 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                                     hash.update(chunk);
                                 }
 
-                                if (bar) {
+                                if (bar && !bar.complete) {
                                     bar.tick(chunk.length);
                                 }
                             };
@@ -164,31 +189,32 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                             let sendCompleted = (err: any) => {
                                 socket.removeListener('stream.write', writeListener);
 
-                                if (bar) {
-                                    bar.complete = true;
-                                    bar.render();
-                                }
-
                                 if (err) {
                                     let errMsg = Chalk.bold(Chalk.red(`    [FAILED: '${err}']`));
-                                    process.stderr.write(errMsg + OS.EOL);
+                                    app.output.write(errMsg + OS.EOL);
 
                                     reject(err);
                                 }
                                 else {
                                     let okMsg = Chalk.bold(Chalk.green(`    [OK: ${hash.digest('hex')}:${req.size}]`));
-                                    process.stderr.write(okMsg + OS.EOL);
+                                    app.output.write(okMsg + OS.EOL);
 
                                     resolve();
                                 }
                             };
 
-                            let formatStr = Chalk.bold(`  send '${Truncate(Path.basename(f), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
-                            formatStr += Chalk.reset('');
+                            let formatStr = Chalk.bold(
+                                Chalk.white(
+                                    `  send '${Truncate(Path.basename(f), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`
+                                ));
 
                             bar = new Progress(formatStr, {
+                                callback: () => {
+
+                                },
                                 complete: '=',
                                 incomplete: ' ',
+                                stream: app.output,
                                 width: 20,
                                 total: req.size,
                             });

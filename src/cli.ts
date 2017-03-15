@@ -37,6 +37,40 @@ import * as Path from 'path';
 const SimpleSocket = require('node-simple-socket');
 
 
+// unhandled exception
+process.once('uncaughtException', function(err: any) {
+    let errMsg: string;
+    if (err instanceof Error) {
+        errMsg = `!!!UNHANDLED ERROR!!!
+        
+${err.stack}`;
+    }
+    else {
+        errMsg = sf_helpers.toStringSafe(err);
+    }
+
+    process.stderr
+           .write(Chalk.bold
+                       .bgRed
+                       .yellow(OS.EOL + errMsg + OS.EOL));
+});
+
+// handle CTRL+C
+process.once('SIGINT', function() {
+    process.stdout
+           .write(OS.EOL);
+
+    process.exit();
+});
+
+// exit
+process.once('exit', function(exitCode: number) {
+    process.stdout
+           .write(Chalk.reset
+                       .grey(' '));
+});
+
+
 let args = Minimist(process.argv.slice(2));
 
 let compress: boolean;
@@ -384,7 +418,7 @@ let exitApp = (result?: any) => {
     process.exit(exitCode);
 };
 
-Figlet('SendFile.nodejs', (err, data) => {
+Figlet('SendFile.node', (err, data) => {
     Clear();
 
     let header: string;
@@ -395,7 +429,7 @@ Figlet('SendFile.nodejs', (err, data) => {
         header = data;
     }
 
-    appCtx.writeln(Chalk.yellow(header))
+    appCtx.writeln(Chalk.bold.yellow(header))
           .writeln();
 
     if (unknownArgs.length > 0) {

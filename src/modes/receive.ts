@@ -77,8 +77,21 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         });
 
                         socket.once('close', () => {
-                            app.writeln()
-                               .writeln(`Closed connection with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                            if (app.verbose) {
+                                app.writeln()
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .bold
+                                               .white(`Closed connection`))
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .gray(` with `))
+                                   .write(Chalk.reset
+                                               .bgBlue
+                                               .bold
+                                               .white(socket.socket.remoteAddress))
+                                   .writeln();
+                            }
 
                             if (!app.doNotClose) {
                                 if (server) {
@@ -95,7 +108,18 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
                         }
 
                         app.writeln()
-                           .writeln(`Connection estabished with '${socket.socket.remoteAddress}:${socket.socket.remotePort}'`);
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .bold
+                                       .white(`Connection estabished`))
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .gray(` with `))
+                           .write(Chalk.reset
+                                       .bgBlue
+                                       .bold
+                                       .white(socket.socket.remoteAddress))
+                           .writeln();
 
                         waitForNextFile(app, server, socket);
                     }
@@ -104,9 +128,10 @@ export function handle(app: sf_contracts.AppContext): PromiseLike<number> {
 
                 }
             }).then((srv) => {
-                server = srv; 
+                server = srv;
 
-                app.writeln('Waiting for files...');
+                app.writeln(Chalk.reset
+                                 .gray(`Waiting for files...`));
             }).catch((err) => {
                 completed(err);
             });
@@ -255,12 +280,15 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
                     return;
                 }
 
-                let formatStr = Chalk.bold(`  receive '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`);
-                formatStr += Chalk.reset('');
+                let formatStr = Chalk.bold(
+                                Chalk.white(
+                                    `  receive '${Truncate(Path.basename(fullPath), 30)}' (${req.index + 1}/${req.count}; ${FileSize(req.size)}) [:bar] :percent :etas`
+                                ));
 
                 bar = new Progress(formatStr, {
                     complete: '=',
                     incomplete: ' ',
+                    stream: app.output,
                     total: req.size,
                     width: 20,
                 });
@@ -270,18 +298,13 @@ function waitForNextFile(app: sf_contracts.AppContext, server: Net.Server, socke
                         hash.update(chunk);
                     }
                     
-                    if (bar) {
-                        bar.tick(bytesWritten);
+                    if (bar && !bar.complete) {
+                        bar.tick(chunk.length);
                     }
                 };
 
                 let receiveCompleted = (err: any) => {
                     socket.removeListener('stream.read', readListener);
-
-                    if (bar) {
-                        bar.complete = true;
-                        bar.render();
-                    }
 
                     if (err) {
                         reject(err);
